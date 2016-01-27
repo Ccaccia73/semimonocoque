@@ -145,5 +145,24 @@ class Section:
     def compute_shear_center(self):
         pass
     
+    def set_loads(self, Tx, Ty, Nz, Mx, My, Mz):
+        self.Tx = Tx
+        self.Ty = Ty
+        self.Nz = Nz
+        self.Mx = Mx
+        self.My = My
+        self.Mz = Mz
+    
+    
+    def compute_stringer_actions(self):
+        self.N = {}
+        Atot = sum([self.g.node[n]["area"] for n in self.g.nodes()])
+        for n in self.g.nodes():
+            Ai = self.g.node[n]["area"]
+            self.N[n] = self.Nz*Ai/Atot +self.Mx/self.Ixx*Ai*self.g.node[n]["pos"][1]-self.My/self.Iyy*Ai*self.g.node[n]["pos"][0]
+    
+    def compute_panel_fluxes(self):
+        pass
+    
     def detect_cylces(self):
         self.cycles = nx.cycle_basis(self.g)

@@ -41,7 +41,7 @@ class Section:
         y_cg = sum([self.g.node[n]["area"]*self.g.node[n]["ip"][1] for n in self.g.nodes()]) / \
                     sum([self.g.node[n]["area"] for n in self.g.nodes()])
         
-        return [sympy.simplify(sympy.expand(x_cg)), sympy.simplify(sympy.expand(y_cg))]
+        return sympy.Matrix([sympy.simplify(sympy.expand(x_cg)), sympy.simplify(sympy.expand(y_cg))])
     
     def compute_inertia(self, point, ct):
         Ixx = sum([self.g.node[n]["area"]*(self.g.node[n][ct][1]-point[1])**2 for n in self.g.nodes()])
@@ -85,33 +85,42 @@ class Section:
                         self.g.node[nn]["pos"][1-coord] == self.g.node[lon[jj]]["pos"][1-coord] and \
                         self.g.node[nn]["area"] == self.g.node[lon[jj]]["area"]:
                             self.symmetry[coord]["nodes"].append( (nn,lon[jj]) )
+                            # you must pop the LATTER FIRST!                            
+                            lon.pop(jj)
                             lon.pop(ii)
-                            lon.pop(jj-1)
+                            
                             return self.symmetric_nodes(lon, coord)
                             
         return False
 
     def symmetric_edges(self, loe, coord):
-        
+        #print("Seraching among: ",loe)
         if not loe:
             return True
         else:
             for ii, ee in enumerate(loe):
                 if self.g.node[ee[0]]["pos"][coord] == -self.g.node[ee[1]]["pos"][coord] and self.g.node[ee[0]]["pos"][1-coord] == self.g.node[ee[1]]["pos"][1-coord] or \
                 self.g.node[ee[0]]["pos"][coord] == 0 and self.g.node[ee[1]]["pos"][coord] == 0:
-                    self.symmetry[coord]["edges"].append( (ee,ee) )
+                    self.symmetry[coord]["edges"].append( (ee) )
                     loe.pop(ii)
                     return self.symmetric_edges(loe, coord)
                 else:
                     for jj in range(ii+1,len(loe)):
-                        if (self.g.node[ee[0]]["pos"][coord] == -self.g.node[e1[0]]["pos"][0] and \
-                        self.g.node[ee[0]]["pos"][1-coord] == self.g.node[e1[0]]["pos"][1] and \
-                        self.g.node[ee[1]]["pos"][coord] == -self.g.node[e1[1]]["pos"][0] and \
-                        self.g.node[ee[1]]["pos"][1-coord] == self.g.node[e1[1]]["pos"][1] ) or ( \
-                        self.g.node[ee[0]]["pos"][coord] == -self.g.node[e1[1]]["pos"][0] and \
-                        self.g.node[ee[0]]["pos"][1-coord] == self.g.node[e1[1]]["pos"][1] and \
-                        self.g.node[ee[1]]["pos"][coord] == -self.g.node[e1[0]]["pos"][0] and \
-                        self.g.node[ee[1]]["pos"][1-coord] == self.g.node[e1[0]]["pos"][1] ) :
+                        if self.g.edge[ee[0]][ee[1]]["thickness"] == self.g.edge[loe[jj][0]][loe[jj][1]]["thickness"] :
+                            if ( self.g.node[ee[0]]["pos"][coord] == -self.g.node[loe[jj][0]]["pos"][coord] and \
+                                 self.g.node[ee[0]]["pos"][1-coord] == self.g.node[loe[jj][0]]["pos"][1-coord] and \
+                                 self.g.node[ee[1]]["pos"][coord] == -self.g.node[loe[jj][1]]["pos"][coord] and \
+                                 self.g.node[ee[1]]["pos"][1-coord] == self.g.node[loe[jj][1]]["pos"][1-coord] ) or ( \
+                                 self.g.node[ee[0]]["pos"][coord] == -self.g.node[loe[jj][1]]["pos"][coord] and \
+                                 self.g.node[ee[0]]["pos"][1-coord] == self.g.node[loe[jj][1]]["pos"][1-coord] and \
+                                 self.g.node[ee[1]]["pos"][coord] == -self.g.node[loe[jj][0]]["pos"][coord] and \
+                                 self.g.node[ee[1]]["pos"][1-coord] == self.g.node[loe[jj][0]]["pos"][1-coord] ) :
+                                     self.symmetry[coord]["edges"].append( (ee,loe[jj]) )
+                                     loe.pop(jj)
+                                     loe.pop(ii)
+                                     
+                                     return self.symmetric_edges(loe, coord)
+        return False
                             
                     
         
@@ -122,21 +131,19 @@ class Section:
         # dictionary containing matched pairs, if any        
         self.symmetry = [{"nodes": [], "edges": []}, {"nodes": [], "edges": []}]
         
-        if self.symmetric_nodes(self.g.nodes(),0):
-            print("True for X!")
-        else:
-            print("False for X!")
-
-        if self.symmetric_nodes(self.g.nodes(),1):
-            print("True for Y!")
-            print(self.symmetry)
-        else:
-            print("False for Y!")
+        for kk in range(2):
+            if self.symmetric_nodes(self.g.nodes(),kk):
+                # print("Nodes True for {} !".format("X" if kk == 0 else "Y"))
+                self.symmetric_edges(self.g.edges(),kk)
+                #print("Edeges True for {} !".format("X" if kk == 0 else "Y"))
+                #else:
+                #    print("Edeges False for {} !".format("X" if kk == 0 else "Y"))
+        #else:
+        #    print("Nodes False for {} !".format("X" if kk == 0 else "Y"))
         
-        if not self.symmetry[0]["nodes"]:
-            symmetric_edges(self.g.edges(),0)
-            
-    def plot_section(self,):
+        #print(self.symmetry)
+    def compute_shear_center(self):
         pass
+    
     def detect_cylces(self):
         self.cycles = nx.cycle_basis(self.g)

@@ -12,10 +12,13 @@ import matplotlib.pyplot as plt
 
 
 class Section:
-    def __init__(self, stringers, panels):
-        self.g = nx.Graph()
+    def __init__(self, stringers, panels):        
+        self.g = nx.DiGraph()
         self.set_stringers(stringers)
         self.set_panels(panels)
+        
+        self.g_ind = nx.Graph(self.g)        
+        
         self.cg = self.compute_cg()
         
         self.Ixx0, self.Iyy0, self.Ixy0, self.α0 = self.compute_inertia(self.cg, "ip")
@@ -25,6 +28,8 @@ class Section:
         self.Ixx, self.Iyy, self.Ixy, self.θ = self.compute_inertia([0, 0], "pos")
         
         self.test_simmetry()
+        
+        self.detect_cycles()
         
         #display(self.Ixx, self.Iyy, self.Ixy, self.θ)
         
@@ -162,7 +167,44 @@ class Section:
             self.N[n] = self.Nz*Ai/Atot +self.Mx/self.Ixx*Ai*self.g.node[n]["pos"][1]-self.My/self.Iyy*Ai*self.g.node[n]["pos"][0]
     
     def compute_panel_fluxes(self):
-        pass
+        
+        #self.q = {}
+        
+        nq = len(self.g.edges())
+        
+        self.T = sympy.zeros(nq,1)
+        
+        self.A = sympy.zeros(nq)
+        
+        edgedict = dict(zip(self.g.edges(), range(nq)))
+        
+        for rowi, nn in enumerate(self.g.nodes()[:-1]):
+            for pn in self.g.predecessors(nn):
+                self.A[rowi,edgedict[(pn,nn)] ] = -1
+            for sn in self.g.successors(nn):
+                self.A[rowi,edgedict[(nn,sn)] ] = 1
+                
+            self.T[rowi] = -self.Ty/self.Ixx*self.g.node[nn]["area"]*self.g.node[nn]["pos"][1]-self.Tx/self.Iyy*self.g.node[nn]["area"]*self.g.node[nn]["pos"][0]
+         
+        if len(self.cycles):
+            self.T[-len(self.cycles)] = self.Mz
+            for ee in self.g.edges():
+                self.A[-len(self.cycles),edgedict[ee]] = self.compute_Omega_i(*ee)
+        
+        
+        self.q = self.A.LUsolve(self.T)
+        
+            
+    def compute_Omega_i(self,n1,n2):
+        v1 = sympy.zeros(3,1)
+        v2 = sympy.zeros(3,1)
+        
+        for i in range(2):
+            v1[i] = self.g.node[n1]["pos"][i]
+            v2[i] = self.g.node[n2]["pos"][i]
+                
+        return v1.cross(v2)[2]
+            
     
-    def detect_cylces(self):
-        self.cycles = nx.cycle_basis(self.g)
+    def detect_cycles(self):
+        self.cycles = nx.cycle_basis(self.g_ind)

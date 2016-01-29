@@ -38,7 +38,7 @@ class Section:
             self.g.add_node(k, ip=v[0],area=v[1])
     def set_panels(self,panels):
         for k,v in panels.items():
-            self.g.add_edge(k[0],k[1], thickness=v)
+            self.g.add_edge(k[0],k[1], thickness=v, length = sympy.sqrt( (self.g.node[k[0]]["ip"][0] - self.g.node[k[1]]["ip"][0])**2 + (self.g.node[k[0]]["ip"][1] - self.g.node[k[1]]["ip"][1])**2  ))
     def compute_cg(self):
         x_cg = sum([self.g.node[n]["area"]*self.g.node[n]["ip"][0] for n in self.g.nodes()]) / \
                     sum([self.g.node[n]["area"] for n in self.g.nodes()])
@@ -181,11 +181,10 @@ class Section:
             for ci in range(len(cycle_nodes)-1):
                 edge = (cycle_nodes[ci],cycle_nodes[ci+1])
                 rev_edge = (cycle_nodes[ci+1],cycle_nodes[ci])
-                lenght_i = sympy.sqrt( (self.g.node[cycle_nodes[ci+1]]["pos"][0] - self.g.node[cycle_nodes[ci]]["pos"][0])**2 + (self.g.node[cycle_nodes[ci+1]]["pos"][1] - self.g.node[cycle_nodes[ci]]["pos"][1])**2  )
                 if edge in self.g.edges():
-                    self.A[-1-c_count,edgedict[edge]] = lenght_i / self.g.edge[edge[0]][edge[1]]['thickness']
+                    self.A[-1-c_count,edgedict[edge]] = self.g.edge[edge[0]][edge[1]]['length'] / self.g.edge[edge[0]][edge[1]]['thickness']
                 elif (rev_edge) in self.g.edges():
-                    self.A[-1-c_count,edgedict[rev_edge]] = -lenght_i / self.g.edge[edge[1]][edge[0]]['thickness']
+                    self.A[-1-c_count,edgedict[rev_edge]] = -self.g.edge[edge[1]][edge[0]]['length'] / self.g.edge[edge[1]][edge[0]]['thickness']
                 else:
                     print("Problem?")
 
@@ -196,6 +195,9 @@ class Section:
         tempq = self.A.LUsolve(self.T)
         
         return sympy.simplify(tempq[-1])
+        
+    def compute_Jt(self):
+        pass
     
     def set_loads(self, _Tx, _Ty, _Nz, _Mx, _My, _Mz):
         self.Tx = _Tx
@@ -239,6 +241,8 @@ class Section:
             for ee in self.g.edges():
                 self.A[-len(self.cycles),edgedict[ee]] = self.compute_2Omega_i(*ee, False)
         
+        if len(self.cycles) > 1:
+            pass
         
         tempq = self.A.LUsolve(self.T)
         

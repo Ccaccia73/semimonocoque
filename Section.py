@@ -4,11 +4,11 @@ Created on Mon Jan 25 17:18:41 2016
 
 @author: claudio
 """
-from pint import UnitRegistry
+#from pint import UnitRegistry
 import sympy
 import networkx as nx
 import numpy as np
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 
 
 class Section:
@@ -242,7 +242,29 @@ class Section:
                 self.A[-len(self.cycles),edgedict[ee]] = self.compute_2Omega_i(*ee, False)
         
         if len(self.cycles) > 1:
-            pass
+            c = []
+            for c_count in range(len(self.cycles)-1):
+                c[0] = self.cycles[c_count]
+                c[0].append(self.cycles[c_count][0])
+                c[1] = self.cycles[c_count+1]
+                c[1].append(self.cycles[c_count+1][0])
+                a_2Omega_k = [0,0]
+                
+                #compute area of 2 adjacent cells
+                for i_om in range(2):
+                    for i_node in range(len(c[i_om])-1):
+                        a_2Omega_k[i_om] += self.compute_2Omega_i(c[i_om][i_node],c[i_om][i_node+1],False)
+
+                    edge = (c[i_om][i_node],c[i_om][i_node+1])
+                    rev_edge = (c[i_om][i_node+1],c[i_om][i_node])
+                    if edge in self.g.edges():
+                        self.A[-1-c_count,edgedict[edge]] = (-1)**i_om*self.g.edge[edge[0]][edge[1]]['length'] / self.g.edge[edge[0]][edge[1]]['thickness']
+                    elif (rev_edge) in self.g.edges():
+                        self.A[-1-c_count,edgedict[rev_edge]] = -(-1)**i_om*self.g.edge[edge[1]][edge[0]]['length'] / self.g.edge[edge[1]][edge[0]]['thickness']
+                    else:
+                        print("Problem?")
+
+
         
         tempq = self.A.LUsolve(self.T)
         

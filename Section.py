@@ -27,9 +27,9 @@ class Section:
         
         self.Ixx, self.Iyy, self.Ixy, self.θ = self.compute_inertia([0, 0], "pos")
         
-        self.test_simmetry()
-        
         self.detect_cycles()
+        
+        self.test_simmetry()
         
         #display(self.Ixx, self.Iyy, self.Ixy, self.θ)
         
@@ -132,14 +132,19 @@ class Section:
     def test_simmetry(self):
         
         #loe = self.g.edges()
-
+        self.ct = sympy.zeros(2,1)
         # dictionary containing matched pairs, if any        
         self.symmetry = [{"nodes": [], "edges": []}, {"nodes": [], "edges": []}]
         
         for kk in range(2):
             if self.symmetric_nodes(self.g.nodes(),kk):
                 # print("Nodes True for {} !".format("X" if kk == 0 else "Y"))
-                self.symmetric_edges(self.g.edges(),kk)
+                if self.symmetric_edges(self.g.edges(),kk):
+                    self.ct[kk] = 0
+                else:
+                    self.ct[kk] = self.compute_shear_center(1-kk)
+            else:
+                self.ct[kk] = self.compute_shear_center(1-kk)
                 #print("Edeges True for {} !".format("X" if kk == 0 else "Y"))
                 #else:
                 #    print("Edeges False for {} !".format("X" if kk == 0 else "Y"))
@@ -147,16 +152,58 @@ class Section:
         #    print("Nodes False for {} !".format("X" if kk == 0 else "Y"))
         
         #print(self.symmetry)
-    def compute_shear_center(self):
-        pass
+    def compute_shear_center(self, coord):
+        nq = len(self.g.edges())+1
+        
+        self.T = sympy.zeros(nq,1)
+        
+        self.A = sympy.zeros(nq)
+
+        edgedict = dict(zip(self.g.edges(), range(nq)))
+        #edgedictback = dict(zip(range(nq), self.g.edges()))
+        
+        for rowi, nn in enumerate(self.g.nodes()[:-1]):
+            for pn in self.g.predecessors(nn):
+                self.A[rowi,edgedict[(pn,nn)] ] = -1
+            for sn in self.g.successors(nn):
+                self.A[rowi,edgedict[(nn,sn)] ] = 1
+                
+            self.T[rowi] = -coord/self.Ixx*self.g.node[nn]["area"]*self.g.node[nn]["pos"][1]-(1-coord)/self.Iyy*self.g.node[nn]["area"]*self.g.node[nn]["pos"][0]
+         
+        self.T[-(1+len(self.cycles))] = 0
+        for ee in self.g.edges():
+            self.A[-(1+len(self.cycles)),edgedict[ee]] = self.compute_2Omega_i(*ee, True)
+        self.A[-(1+len(self.cycles)),-1] = -1
+
+        for c_count in range(len(self.cycles)):
+            cycle_nodes = self.cycles[c_count]
+            cycle_nodes.append(self.cycles[c_count][0])
+            for ci in range(len(cycle_nodes)-1):
+                edge = (cycle_nodes[ci],cycle_nodes[ci+1])
+                rev_edge = (cycle_nodes[ci+1],cycle_nodes[ci])
+                lenght_i = sympy.sqrt( (self.g.node[cycle_nodes[ci+1]]["pos"][0] - self.g.node[cycle_nodes[ci]]["pos"][0])**2 + (self.g.node[cycle_nodes[ci+1]]["pos"][1] - self.g.node[cycle_nodes[ci]]["pos"][1])**2  )
+                if edge in self.g.edges():
+                    self.A[-1-c_count,edgedict[edge]] = lenght_i / self.g.edge[edge[0]][edge[1]]['thickness']
+                elif (rev_edge) in self.g.edges():
+                    self.A[-1-c_count,edgedict[rev_edge]] = -lenght_i / self.g.edge[edge[1]][edge[0]]['thickness']
+                else:
+                    print("Problem?")
+
+                
+            
+            
+        
+        tempq = self.A.LUsolve(self.T)
+        
+        return sympy.simplify(tempq[-1])
     
-    def set_loads(self, Tx, Ty, Nz, Mx, My, Mz):
-        self.Tx = Tx
-        self.Ty = Ty
-        self.Nz = Nz
-        self.Mx = Mx
-        self.My = My
-        self.Mz = Mz
+    def set_loads(self, _Tx, _Ty, _Nz, _Mx, _My, _Mz):
+        self.Tx = _Tx
+        self.Ty = _Ty
+        self.Nz = _Nz
+        self.Mx = _Mx
+        self.My = _My
+        self.Mz = _Mz
     
     
     def compute_stringer_actions(self):
@@ -177,6 +224,7 @@ class Section:
         self.A = sympy.zeros(nq)
         
         edgedict = dict(zip(self.g.edges(), range(nq)))
+        edgedictback = dict(zip(range(nq), self.g.edges()))
         
         for rowi, nn in enumerate(self.g.nodes()[:-1]):
             for pn in self.g.predecessors(nn):
@@ -189,19 +237,26 @@ class Section:
         if len(self.cycles):
             self.T[-len(self.cycles)] = self.Mz
             for ee in self.g.edges():
-                self.A[-len(self.cycles),edgedict[ee]] = self.compute_Omega_i(*ee)
+                self.A[-len(self.cycles),edgedict[ee]] = self.compute_2Omega_i(*ee, False)
         
         
-        self.q = self.A.LUsolve(self.T)
+        tempq = self.A.LUsolve(self.T)
+        
+        self.q = {edgedictback[i]: sympy.simplify(tempq[i]) for i in edgedictback}
         
             
-    def compute_Omega_i(self,n1,n2):
+    def compute_2Omega_i(self,n1,n2, use_cg):
         v1 = sympy.zeros(3,1)
         v2 = sympy.zeros(3,1)
         
         for i in range(2):
-            v1[i] = self.g.node[n1]["pos"][i]
-            v2[i] = self.g.node[n2]["pos"][i]
+            if use_cg:
+                v1[i] = self.g.node[n1]["pos"][i]
+                v2[i] = self.g.node[n2]["pos"][i]
+            else:
+                v1[i] = self.g.node[n1]["pos"][i] - self.ct[i]
+                v2[i] = self.g.node[n2]["pos"][i] - self.ct[i]
+                
                 
         return v1.cross(v2)[2]
             

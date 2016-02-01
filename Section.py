@@ -17,7 +17,7 @@ class Section:
         self.set_stringers(stringers)
         self.set_panels(panels)
         
-        self.g_ind = nx.Graph(self.g)        
+        self.g_ind = nx.Graph(self.g)
         
         self.cg = self.compute_cg()
         
@@ -30,6 +30,8 @@ class Section:
         self.detect_cycles()
         
         self.test_simmetry()
+        
+        
         
         #display(self.Ixx, self.Iyy, self.Ixy, self.θ)
         
@@ -207,7 +209,51 @@ class Section:
         return sympy.simplify(self.tempq[-1])
         
     def compute_Jt(self):
-        pass
+        
+        # tempoorarily save load values
+        tmp = sympy.zeros(6,1)
+        tmp[0] = self.Tx
+        tmp[1] = self.Ty
+        tmp[2] = self.Nz
+        tmp[3] = self.Mx
+        tmp[4] = self.My
+        tmp[5] = self.Mz
+        
+        # set torque to 1
+        self.Tx = sympy.Integer(0)
+        self.Ty = sympy.Integer(0)
+        self.Nz = sympy.Integer(0)
+        self.Mx = sympy.Integer(0)
+        self.My = sympy.Integer(0)
+        self.Mz = sympy.Integer(1)
+        
+        
+        # compute fluxes with torque = 1
+        self.compute_panel_fluxes()
+        
+        # build matrix
+        
+        nq = len(self.g.edges())
+        edgedict = dict(zip(self.g.edges(), range(nq)))
+
+
+        self.A1 = sympy.zeros(nq,nq)
+        
+        q_prime = sympy.zeros(nq,1)
+        
+        for edge in self.g.edges():
+            q_prime[edgedict[edge]] = self.q[edge]
+            self.A1[edgedict[edge],edgedict[edge]] = self.g.edge[edge[0]][edge[1]]['length'] / self.g.edge[edge[0]][edge[1]]['thickness']
+        
+        self.Jt = (q_prime.T * self.A1 * q_prime)**(-1)
+        
+        
+        self.Tx = tmp[0]
+        self.Ty = tmp[1]
+        self.Nz = tmp[2]
+        self.Mx = tmp[3]
+        self.My = tmp[4]
+        self.Mz = tmp[5]
     
     def set_loads(self, _Tx, _Ty, _Nz, _Mx, _My, _Mz):
         self.Tx = _Tx

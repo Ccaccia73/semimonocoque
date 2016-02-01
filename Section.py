@@ -138,18 +138,25 @@ class Section:
         
         for kk in range(2):
             if self.symmetric_nodes(self.g.nodes(),kk):
-                # print("Nodes True for {} !".format("X" if kk == 0 else "Y"))
+                print("Nodes True for {} !".format("X" if kk == 1 else "Y"))
                 if self.symmetric_edges(self.g.edges(),kk):
-                    self.ct[kk] = 0
+                    print("Edeges True for {} !".format("X" if kk == 1 else "Y"))
+                    #self.ct[kk] = 0
                 else:
+                    print("Edeges False for {} !".format("X" if kk == 1 else "Y"))
                     self.ct[kk] = self.compute_shear_center(1-kk)
             else:
+                print("Nodes False for {} !".format("X" if kk == 1 else "Y"))
+                print("compute SC ")
                 self.ct[kk] = self.compute_shear_center(1-kk)
                 #print("Edeges True for {} !".format("X" if kk == 0 else "Y"))
                 #else:
                 #    print("Edeges False for {} !".format("X" if kk == 0 else "Y"))
         #else:
         #    print("Nodes False for {} !".format("X" if kk == 0 else "Y"))
+        
+        #self.ct[0] = self.compute_shear_center(1)
+        #self.ct[1] = self.compute_shear_center(0)        
         
         #print(self.symmetry)
     def compute_shear_center(self, coord):
@@ -173,11 +180,14 @@ class Section:
         self.T[-(1+len(self.cycles))] = 0
         for ee in self.g.edges():
             self.A[-(1+len(self.cycles)),edgedict[ee]] = self.compute_2Omega_i(*ee, True)
-        self.A[-(1+len(self.cycles)),-1] = -1
+        
+        # Ty*xct da un contributo positivo a Mz, ma Tx*yct dà un contributo negativo a Mz, il segno dipende dalla coordinata        
+        self.A[-(1+len(self.cycles)),-1] = (-1)**(coord)
 
         for c_count in range(len(self.cycles)):
             cycle_nodes = self.cycles[c_count]
-            cycle_nodes.append(self.cycles[c_count][0])
+            if cycle_nodes[0] != cycle_nodes[-1]:
+                cycle_nodes.append(self.cycles[c_count][0])
             for ci in range(len(cycle_nodes)-1):
                 edge = (cycle_nodes[ci],cycle_nodes[ci+1])
                 rev_edge = (cycle_nodes[ci+1],cycle_nodes[ci])
@@ -192,9 +202,9 @@ class Section:
             
             
         
-        tempq = self.A.LUsolve(self.T)
+        self.tempq = self.A.LUsolve(self.T)
         
-        return sympy.simplify(tempq[-1])
+        return sympy.simplify(self.tempq[-1])
         
     def compute_Jt(self):
         pass
@@ -242,28 +252,31 @@ class Section:
                 self.A[-len(self.cycles),edgedict[ee]] = self.compute_2Omega_i(*ee, False)
         
         if len(self.cycles) > 1:
-            c = []
+            c = [[],[]]
             for c_count in range(len(self.cycles)-1):
                 c[0] = self.cycles[c_count]
-                c[0].append(self.cycles[c_count][0])
+                if c[0][0] != c[0][-1]:
+                    c[0].append(self.cycles[c_count][0])
                 c[1] = self.cycles[c_count+1]
-                c[1].append(self.cycles[c_count+1][0])
+                if c[1][0] != c[1][-1]:
+                    c[1].append(self.cycles[c_count+1][0])
+                               
                 a_2Omega_k = [0,0]
-                
                 #compute area of 2 adjacent cells
                 for i_om in range(2):
                     for i_node in range(len(c[i_om])-1):
                         a_2Omega_k[i_om] += self.compute_2Omega_i(c[i_om][i_node],c[i_om][i_node+1],False)
-
-                    edge = (c[i_om][i_node],c[i_om][i_node+1])
-                    rev_edge = (c[i_om][i_node+1],c[i_om][i_node])
-                    if edge in self.g.edges():
-                        self.A[-1-c_count,edgedict[edge]] = (-1)**i_om*self.g.edge[edge[0]][edge[1]]['length'] / self.g.edge[edge[0]][edge[1]]['thickness']
-                    elif (rev_edge) in self.g.edges():
-                        self.A[-1-c_count,edgedict[rev_edge]] = -(-1)**i_om*self.g.edge[edge[1]][edge[0]]['length'] / self.g.edge[edge[1]][edge[0]]['thickness']
-                    else:
-                        print("Problem?")
-
+                    
+                    for i_node in range(len(c[i_om])-1):    
+                        edge = (c[i_om][i_node],c[i_om][i_node+1])
+                        rev_edge = (c[i_om][i_node+1],c[i_om][i_node])
+                        if edge in self.g.edges():
+                            self.A[-1-c_count,edgedict[edge]] += (-1)**i_om*self.g.edge[edge[0]][edge[1]]['length'] / self.g.edge[edge[0]][edge[1]]['thickness'] / a_2Omega_k[i_om]
+                        elif (rev_edge) in self.g.edges():
+                            self.A[-1-c_count,edgedict[rev_edge]] += -(-1)**i_om*self.g.edge[edge[1]][edge[0]]['length'] / self.g.edge[edge[1]][edge[0]]['thickness']  / a_2Omega_k[i_om]
+                        else:
+                            print("Problem?")
+                            print(edge)
 
         
         tempq = self.A.LUsolve(self.T)

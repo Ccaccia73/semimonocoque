@@ -59,7 +59,7 @@ class Section:
         Iyy = sympy.simplify(sympy.expand(Iyy))
         Ixy = sympy.simplify(sympy.expand(Ixy))
         
-        α = 0.5*sympy.atan(2*Ixy/(Iyy-Ixx))
+        α = sympy.Rational(1,2)*sympy.atan(2*Ixy/(Iyy-Ixx))
         
         return [Ixx, Iyy, Ixy, α]
         

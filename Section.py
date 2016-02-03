@@ -7,7 +7,7 @@ Created on Mon Jan 25 17:18:41 2016
 #from pint import UnitRegistry
 import sympy
 import networkx as nx
-import numpy as np
+#import numpy as np
 #import matplotlib.pyplot as plt
 
 

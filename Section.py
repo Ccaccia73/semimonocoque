@@ -494,4 +494,29 @@ class Section:
         
         for ii in range(self.L.cols):
             self.H[:,ii] = self.compute_panel_fluxes(ii)
+     
+    def compute_KM(self, A0, l0, t0):
+        A0_A = sympy.eye(len(self.g.nodes()))
+        
+        
+        nq = len(self.g.edges())
+        edgedict = dict(zip(self.g.edges(), range(nq)))
+
+        lt = sympy.eye(nq)
+        
+        for ni,node in enumerate(self.g.nodes()):
+            A0_A[ni,ni] = A0/self.g.node[node]["area"]
             
+        for edge in self.g.edges():
+            lt[edgedict[edge],edgedict[edge]] = self.g.edge[edge[0]][edge[1]]["length"]/self.g.edge[edge[0]][edge[1]]["thickness"]*t0/l0
+            
+        self.Ktilde = self.L.T*A0_A*self.L
+        
+        self.Mtilde = self.H.T*lt*self.H
+        
+        Mat1 = self.Ktilde.inv()*self.Mtilde        
+        
+        self.β2 = Mat1.eigenvals()
+        
+        
+        

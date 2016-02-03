@@ -137,13 +137,15 @@ class Section:
         self.ct = sympy.zeros(2,1)
         # dictionary containing matched pairs, if any        
         self.symmetry = [{"nodes": [], "edges": []}, {"nodes": [], "edges": []}]
+        self.is_symmetric = [False,False]        
         
         for kk in range(2):
             if self.symmetric_nodes(self.g.nodes(),kk):
-                print("Nodes True for {} !".format("X" if kk == 1 else "Y"))
+                #print("Nodes True for {} !".format("X" if kk == 1 else "Y"))
                 if self.symmetric_edges(self.g.edges(),kk):
-                    print("Edeges True for {} !".format("X" if kk == 1 else "Y"))
+                    #print("Edeges True for {} !".format("X" if kk == 1 else "Y"))
                     #self.ct[kk] = 0
+                    self.is_symmetric[kk] = True
                 else:
                     print("Edeges False for {} !".format("X" if kk == 1 else "Y"))
                     self.ct[kk] = self.compute_shear_center(1-kk)
@@ -271,7 +273,7 @@ class Section:
             Ai = self.g.node[n]["area"]
             self.N[n] = self.Nz*Ai/Atot +self.Mx/self.Ixx*Ai*self.g.node[n]["pos"][1]-self.My/self.Iyy*Ai*self.g.node[n]["pos"][0]
     
-    def compute_panel_fluxes(self):
+    def compute_panel_fluxes(self, Lcol_i = -1):
         
         #self.q = {}
         
@@ -289,11 +291,18 @@ class Section:
                 self.A[rowi,edgedict[(pn,nn)] ] = -1
             for sn in self.g.successors(nn):
                 self.A[rowi,edgedict[(nn,sn)] ] = 1
-                
-            self.T[rowi] = -self.Ty/self.Ixx*self.g.node[nn]["area"]*self.g.node[nn]["pos"][1]-self.Tx/self.Iyy*self.g.node[nn]["area"]*self.g.node[nn]["pos"][0]
-         
+            
+            if Lcol_i == -1:
+                self.T[rowi] = -self.Ty/self.Ixx*self.g.node[nn]["area"]*self.g.node[nn]["pos"][1]-self.Tx/self.Iyy*self.g.node[nn]["area"]*self.g.node[nn]["pos"][0]
+            else:
+                self.T[rowi] = -self.L[rowi,Lcol_i]
+            
         if len(self.cycles):
-            self.T[-len(self.cycles)] = self.Mz
+            if Lcol_i ==-1:
+                self.T[-len(self.cycles)] = self.Mz
+            else:
+                self.T[-len(self.cycles)] = 0
+                
             for ee in self.g.edges():
                 self.A[-len(self.cycles),edgedict[ee]] = self.compute_2Omega_i(*ee, False)
         
@@ -329,6 +338,8 @@ class Section:
         
         self.q = {edgedictback[i]: sympy.simplify(tempq[i]) for i in edgedictback}
         
+        return tempq
+        
             
     def compute_2Omega_i(self,n1,n2, use_cg):
         v1 = sympy.zeros(3,1)
@@ -348,3 +359,139 @@ class Section:
     
     def detect_cycles(self):
         self.cycles = nx.cycle_basis(self.g_ind)
+        
+    def compute_L(self):
+        
+        nnode = len(self.g.nodes())
+        
+        nodedict = dict(zip(self.g.nodes(), range(nnode)))
+        
+        self.L = sympy.zeros(nnode,nnode-3)
+
+        aa = sympy.symbols('a0:%d'%nnode)
+        
+        self.expr = []
+        
+        if any(self.is_symmetric):
+            if self.is_symmetric[0]:
+                act_nodes = self.symmetry[0]['nodes']
+            else:
+                act_nodes = self.symmetry[1]['nodes']
+                
+            self.val = sympy.zeros(nnode,2)
+            
+            ai = 0
+            a_sym = []
+            a_asym = []
+            for nc in act_nodes:
+                if nc[0] != nc[1]:
+                    self.val[nodedict[nc[0]],1] = aa[ai]
+                    self.val[nodedict[nc[1]],1] = -aa[ai]
+                    a_asym.append(aa[ai])                    
+                    ai +=1
+                
+                self.val[nodedict[nc[0]],0] = aa[ai]
+                self.val[nodedict[nc[1]],0] = aa[ai]
+                a_sym.append(aa[ai])
+                ai += 1
+            
+            self.expr.append(sum(self.val[:,0]))
+            self.expr.append(sum([self.val[nodedict[ni],0]*self.g.node[ni]['pos'][1] for ni in self.g.nodes() ]))
+            self.expr.append(sum([self.val[nodedict[ni],1]*self.g.node[ni]['pos'][0] for ni in self.g.nodes() ]))
+
+            self.system1=sympy.zeros(len(a_sym)+1,2)
+            
+            for k in range(2):
+                dd = sympy.poly(self.expr[k],a_sym)
+                self.system1[0:len(a_sym),k] = dd.coeffs()
+            
+            self.sol1 = sympy.solve_linear_system(self.system1.T, *a_sym)            
+            
+            self.system2=sympy.zeros(len(a_asym)+1,1)
+            dd = sympy.poly(self.expr[2],a_asym)
+            self.system2[0:len(a_asym),0] = dd.coeffs()
+            
+            self.sol2 = sympy.solve_linear_system(self.system2.T, *a_asym)            
+            
+            free_var = [[ai for ai in a_sym if ai not in self.sol1],[ai for ai in a_asym if ai not in self.sol2]]
+            
+            self.free = [[],[]]
+            
+            for kk in range(2):        
+                for snum, sym in enumerate(free_var[kk]):
+                    self.free[kk].append([])
+                    for snum1, sym1 in enumerate(free_var[kk]):
+                        if snum==snum1:
+                            self.free[kk][snum].append((sym1,1))
+                        else:
+                            self.free[kk][snum].append((sym1,0))
+        
+            self.symm_sol_list = []
+            
+            for ns, ls in enumerate(self.free[0]):
+                self.symm_sol_list.append([(ai,self.sol1[ai].subs(ls)) for ai in self.sol1])
+                for li in ls:
+                    self.symm_sol_list[ns].append(li)
+            
+            
+            for nsol, sol_list in enumerate(self.symm_sol_list):
+                self.L[:,nsol] = self.val[:,0].subs(sol_list)
+
+                
+            self.asym_sol_list = []
+            
+            for ns, ls in enumerate(self.free[1]):
+                self.asym_sol_list.append([(ai,self.sol2[ai].subs(ls)) for ai in self.sol2])
+                for li in ls:
+                    self.asym_sol_list[ns].append(li)
+
+            for nsol, sol_list in enumerate(self.asym_sol_list):
+                self.L[:,-1-nsol] = self.val[:,1].subs(sol_list)
+
+
+        else:
+            self.val = sympy.zeros(nnode,1)
+            for kk in range(nnode):
+                self.val[kk] = aa[kk]
+
+            self.expr.append(sum(self.val))
+            self.expr.append(sum([self.val[nodedict[ni]]*self.g.node[ni]['pos'][1] for ni in self.g.nodes() ]))
+            self.expr.append(sum([self.val[nodedict[ni]]*self.g.node[ni]['pos'][0] for ni in self.g.nodes() ]))
+            
+            self.system1=sympy.zeros(len(aa)+1,3)
+
+            for k in range(3):
+                dd = sympy.poly(self.expr[k],aa)
+                self.system1[0:len(aa),k] = dd.coeffs()
+                
+            self.sol1 = sympy.solve_linear_system(self.system1.T, *aa)
+            
+            free_var = [ai for ai in aa if ai not in self.sol1]
+            
+            self.free = []
+            
+            for snum, sym in enumerate(free_var):
+                self.free.append([])
+                for snum1, sym1 in enumerate(free_var):
+                    if snum==snum1:
+                        self.free[snum].append((sym1,1))
+                    else:
+                        self.free[snum].append((sym1,0))
+
+            self.sol_list = []
+            
+            for ns, ls in enumerate(self.free):
+                self.sol_list.append([(ai,self.sol1[ai].subs(ls)) for ai in self.sol1])
+                for li in ls:
+                    self.sol_list[ns].append(li)
+
+            for nsol, sol_list in enumerate(self.sol_list):
+                self.L[:,nsol] = self.val[:,0].subs(sol_list)
+
+    def compute_H(self):
+        
+        self.H = sympy.zeros(len(self.g.edges()),self.L.cols)        
+        
+        for ii in range(self.L.cols):
+            self.H[:,ii] = self.compute_panel_fluxes(ii)
+            

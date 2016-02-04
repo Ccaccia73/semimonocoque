@@ -12,36 +12,74 @@ import networkx as nx
 
 
 class Section:
-    def __init__(self, stringers, panels):        
+    """
+    Class used to define a semi-monocoque section
+    parameters:
+     - stringers: nodes of a graph defined as a dictionary: nodes numbers as key and the following attributes as list:
+                  - a tuple containing x, y coordinates
+                  - a parameter defining the Area of the stringer
+     - panels: edges of the graph defined as a dictionary: a tuple containing start and end node as key and the following attributes:
+                  - thickness of the panel
+                  
+    The class asumes that all parameters are sympy symbols or numbers
+    """
+    def __init__(self, stringers, panels):
+        
+        # initialize a directed graph (keeping track of orientation is useful in some calculations)
         self.g = nx.DiGraph()
+        
+        # define nodes of the graph
         self.set_stringers(stringers)
+        
+        #define edged of the graph
         self.set_panels(panels)
         
+        # build an undirected graph based on the starting graph (it is useful for cycles calculations) 
         self.g_ind = nx.Graph(self.g)
         
+        # compute center of gravity
         self.cg = self.compute_cg()
         
+        # compute inertial properties in original reference frame
         self.Ixx0, self.Iyy0, self.Ixy0, self.α0 = self.compute_inertia(self.cg, "ip")
         
+        # given the angle above and the center of gravity, the coordinates in principal reference frame are calculated
+        # and saved ad a new parameter of each node ["pos"]
         self.compute_princip_coords(self.α0)
         
+        # compute inertial properties in principal reference frame
         self.Ixx, self.Iyy, self.Ixy, self.θ = self.compute_inertia([0, 0], "pos")
         
+        # look for all the cycles in the graph (undirected) this data is useful in multi connected sections
         self.detect_cycles()
         
+        # we test if the section is symmetric wrt x or y, it is used to compute (or not) shear center and to build L matrices
         self.test_simmetry()
         
         
-        
-        #display(self.Ixx, self.Iyy, self.Ixy, self.θ)
-        
     def set_stringers(self,stringers):
+        """
+        Populate nodes of the graph
+        """
         for k,v in stringers.items():
             self.g.add_node(k, ip=v[0],area=v[1])
+
+
     def set_panels(self,panels):
+        """
+        populate edges of the graph
+        - a "lenght" parameter is calculated and added to each edge
+        """
         for k,v in panels.items():
             self.g.add_edge(k[0],k[1], thickness=v, length = sympy.sqrt( (self.g.node[k[0]]["ip"][0] - self.g.node[k[1]]["ip"][0])**2 + (self.g.node[k[0]]["ip"][1] - self.g.node[k[1]]["ip"][1])**2  ))
+
+
+
     def compute_cg(self):
+        """
+        Compute center of gravity
+        - return a sympy array with x and y coordinates
+        """
         x_cg = sum([self.g.node[n]["area"]*self.g.node[n]["ip"][0] for n in self.g.nodes()]) / \
                     sum([self.g.node[n]["area"] for n in self.g.nodes()])
         
@@ -50,7 +88,16 @@ class Section:
         
         return sympy.Matrix([sympy.simplify(sympy.expand(x_cg)), sympy.simplify(sympy.expand(y_cg))])
     
+    
     def compute_inertia(self, point, ct):
+        """
+        Compute moments of inertia
+        Parameters:
+        - point = center point (can be origin or c.o.g.)
+        -ct = coordinate type: "ip" for coordinates in original reference frame or "pos" for coordinates w.rt. cog
+        
+        Return inertial properties: Ixx, Iyy, Ixy and angle
+        """
         Ixx = sum([self.g.node[n]["area"]*(self.g.node[n][ct][1]-point[1])**2 for n in self.g.nodes()])
         Iyy = sum([self.g.node[n]["area"]*(self.g.node[n][ct][0]-point[0])**2 for n in self.g.nodes()])
         Ixy = sum([self.g.node[n]["area"]*(self.g.node[n][ct][0]-point[0])* \
@@ -64,19 +111,30 @@ class Section:
         return [Ixx, Iyy, Ixy, α]
         
     def compute_princip_coords(self, α):
+        """
+        Rototraslation of coordinate wrt angle (given as parameter) and center of gravity
+        """
+        
         R = sympy.Matrix([[sympy.cos(α), sympy.sin(α)],[-sympy.sin(α), sympy.cos(α)]])
         
         for n in self.g.nodes():
             b = sympy.Matrix([self.g.node[n]["ip"][0]-self.cg[0], self.g.node[n]["ip"][1]-self.cg[1]])
             self.g.node[n]["pos"] = R*b
             
-            # display(self.g.node[n]["pos"])
-        
-        #print(Ixx, Iyy, Ixy, α)
-        
-        #display(Ixx, Iyy, Ixy, α)
         
     def symmetric_nodes(self, lon, coord):
+        """
+        Recursive function used to search among nodes:
+        parameters:
+         - lon: list of nodes: (function starts with all nodes and are progressively cencelled)
+         - x coordinate or y coordinate is used for the test
+         
+         nodes are popped if:
+         - are on axis o x1 = -x2 and y1 = y2 (or viceversa) and A1 = A2
+         
+         funcion is called until the list is empty (symmetric) or not (not symmetric)
+        """        
+        
         # print("Seraching among: ",lon)
         if not lon:
             return True

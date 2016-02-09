@@ -587,7 +587,10 @@ class Section:
             
             for k in range(2):
                 dd = sympy.poly(self.expr[k],a_sym)
-                self.system1[0:len(a_sym),k] = dd.coeffs()
+                for ii,ai in enumerate(a_sym):
+                    self.system1[ii,k] = dd.coeff_monomial(ai)
+
+                #self.system1[0:len(a_sym),k] = dd.coeffs()
             
             # solve the first underdetermined system
             self.sol1 = sympy.solve_linear_system(self.system1.T, *a_sym)            
@@ -595,7 +598,11 @@ class Section:
             # write a system (actually only a single equation) for My = 0
             self.system2=sympy.zeros(len(a_asym)+1,1)
             dd = sympy.poly(self.expr[2],a_asym)
-            self.system2[0:len(a_asym),0] = dd.coeffs()
+            
+            for ii,ai in enumerate(a_asym):
+                self.system2[ii,0] = dd.coeff_monomial(ai)
+
+            #self.system2[0:len(a_asym),0] = dd.coeffs()
             
             # solve second underdetermined system
             self.sol2 = sympy.solve_linear_system(self.system2.T, *a_asym)            
@@ -659,8 +666,9 @@ class Section:
 
             for k in range(3):
                 dd = sympy.poly(self.expr[k],aa)
-                self.system1[0:len(aa),k] = dd.coeffs()
-            
+                for ii,ai in enumerate(aa):
+                    self.system1[ii,k] = dd.coeff_monomial(ai)
+            #print(self.system1)
             # solve the underdetermined system
             self.sol1 = sympy.solve_linear_system(self.system1.T, *aa)
             
@@ -689,7 +697,9 @@ class Section:
             # polulate L
             for nsol, sol_list in enumerate(self.sol_list):
                 self.L[:,nsol] = self.val[:,0].subs(sol_list)
-
+            
+            self.L = sympy.simplify(self.L)
+            
     def compute_H(self):
         """
         compute matrix H of corrective solution:
@@ -700,8 +710,10 @@ class Section:
         
         for ii in range(self.L.cols):
             self.H[:,ii] = self.compute_panel_fluxes(ii)
-     
-    def compute_KM(self, A0, l0, t0):
+        
+        self.H = sympy.simplify(self.H)
+        
+    def compute_KM(self, A0, l0, t0, datav = None):
         """
         compute Ktilde and Mtilde matrices in function of:
         - reference area A0
@@ -727,7 +739,11 @@ class Section:
             
         for edge in self.g.edges():
             lt[edgedict[edge],edgedict[edge]] = self.g.edge[edge[0]][edge[1]]["length"]/self.g.edge[edge[0]][edge[1]]["thickness"]*t0/l0
-            
+        
+        if datav:
+            A0_A = A0_A.subs(datav)
+            lt = lt.subs(datav)
+        
         self.Ktilde = self.L.T*A0_A*self.L
         
         self.Mtilde = self.H.T*lt*self.H
